@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống POS Siêu Thị Mini</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f4f6f9; padding: 20px; }
+        .header { background: #007bff; color: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .container { display: grid; grid-template-columns: 1fr 400px; gap: 20px; }
+        .card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h2 { margin-bottom: 15px; font-size: 1.2rem; color: #333; border-bottom: 2px solid #eee; padding-bottom: 8px; }
+        
+        /* Scan Form */
+        .scan-box { display: flex; gap: 10px; margin-bottom: 15px; }
+        .scan-box input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
+        .btn { padding: 10px 15px; border: none; background: #28a745; color: white; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn:hover { opacity: 0.9; }
+        .btn-danger { background: #dc3545; }
+
+        /* Table */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #dee2e6; padding: 10px; text-align: left; }
+        th { background: #e9ecef; }
+        .text-right { text-align: right; }
+
+        /* Summary */
+        .summary-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 1.05rem; }
+        .total-pay { font-size: 1.4rem; font-weight: bold; color: #d9534f; border-top: 2px dashed #ccc; padding-top: 10px; }
+        
+        /* Receipt */
+        .receipt { font-family: 'Courier New', Courier, monospace; background: #fffbe6; padding: 15px; border: 1px solid #ffeba8; border-radius: 6px; margin-top: 15px; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🛒 SIÊU THỊ MINI POS</h1>
+    <div id="ca-info">Thu ngân: <strong>Nguyễn</strong> | Ca: <strong>Ca sáng (06-14h)</strong></div>
+</div>
+
+<div class="container">
+    <!-- CỘT TRÁI: QUÉT MÃ & KHO HÀNG -->
+    <div>
+        <div class="card" style="margin-bottom: 20px;">
+            <h2>Bán Hàng / Quét Mã</h2>
+            <form class="scan-box" id="scanForm">
+                <input type="text" id="barcodeInput" placeholder="Quét hoặc nhập mã vạch..." autofocus required>
+                <input type="number" id="qtyInput" value="1" min="1" style="width: 80px;">
+                <button type="submit" class="btn">Thêm</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Danh Mục Kho Hàng</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mã</th>
+                        <th>Tên hàng</th>
+                        <th class="text-right">Đơn giá</th>
+                        <th class="text-right">Tồn kho</th>
+                        <th class="text-right">VAT</th>
+                    </tr>
+                </thead>
+                <tbody id="inventoryTable"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- CỘT PHẢI: GIỎ HÀNG & THANH TOÁN -->
+    <div class="card">
+        <h2>Giỏ Hàng Thanh Toán</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Mặt hàng</th>
+                    <th>SL</th>
+                    <th class="text-right">Thành tiền</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="cartTable"></tbody>
+        </table>
+
+        <div style="margin-top: 20px;">
+            <div class="summary-row"><span>Cộng tiền hàng:</span><span id="txtSubTotal">0 VND</span></div>
+            <div class="summary-row"><span>Thuế VAT:</span><span id="txtVAT">0 VND</span></div>
+            <div class="summary-row total-pay"><span>TỔNG CỘNG:</span><span id="txtTotal">0 VND</span></div>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <label style="display:block; margin-bottom: 5px;">Khách đưa (VND):</label>
+            <input type="number" id="cashInput" style="width: 100%; padding: 10px; font-size: 1.1rem; margin-bottom: 10px;" placeholder="0">
+            <div class="summary-row" style="color: #28a745; font-weight: bold;">
+                <span>Tiền thối:</span><span id="txtChange">0 VND</span>
+            </div>
+            <button class="btn" id="btnPay" style="width: 100%; padding: 12px; font-size: 1.1rem; margin-top: 10px;">IN HÓA ĐƠN & HOÀN TẤT</button>
+        </div>
+
+        <div id="receiptBox" class="receipt" style="display: none;"></div>
+    </div>
+</div>
+
+<script>
+let khoHang = [
+    { ma: "8934563138165", ten: "Mì Hảo Hảo tôm chua cay", donGia: 4500, tonKho: 200, vat: 8 },
+    { ma: "8935001700012", ten: "Nước suối Aquafina 500ml", donGia: 6000, tonKho: 150, vat: 8 },
+    { ma: "8934588012044", ten: "Sữa tươi Vinamilk 1L", donGia: 32000, tonKho: 60, vat: 5 },
+    { ma: "8936036020115", ten: "Coca-Cola lon 330ml", donGia: 10000, tonKho: 120, vat: 8 },
+    { ma: "8938505970012", ten: "Gạo ST25 5kg", donGia: 125000, tonKho: 25, vat: 0 }
+];
+
+let gioHang = [];
+let soHD = 1;
+
+function formatMoney(v) {
+    return new Intl.NumberFormat('vi-VN').format(v);
+}
+
+function renderInventory() {
+    const tbody = document.getElementById('inventoryTable');
+    tbody.innerHTML = khoHang.map(item => `
+        <tr>
+            <td><strong>${item.ma}</strong></td>
+            <td>${item.ten}</td>
+            <td class="text-right">${formatMoney(item.donGia)}đ</td>
+            <td class="text-right" style="color: ${item.tonKho <= 10 ? 'red' : 'black'}">${item.tonKho}</td>
+            <td class="text-right">${item.vat}%</td>
+        </tr>
+    `).join('');
+}
+
+function renderCart() {
+    const tbody = document.getElementById('cartTable');
+    let tongTien = 0, tongVAT = 0;
+
+    tbody.innerHTML = gioHang.map((item, index) => {
+        let thanhTien = item.donGia * item.soLuong;
+        let tienVAT = Math.round((thanhTien * item.vat) / 100);
+        tongTien += thanhTien;
+        tongVAT += tienVAT;
+
+        return `
+            <tr>
+                <td>${item.ten}</td>
+                <td>${item.soLuong}</td>
+                <td class="text-right">${formatMoney(thanhTien)}đ</td>
+                <td><button class="btn btn-danger" style="padding:2px 6px;" onclick="removeItem(${index})">Xóa</button></td>
+            </tr>
+        `;
+    }).join('');
+
+    let tongThanhToan = tongTien + tongVAT;
+    document.getElementById('txtSubTotal').innerText = formatMoney(tongTien) + " VND";
+    document.getElementById('txtVAT').innerText = formatMoney(tongVAT) + " VND";
+    document.getElementById('txtTotal').innerText = formatMoney(tongThanhToan) + " VND";
+
+    calculateChange(tongThanhToan);
+}
+
+function calculateChange(tongThanhToan) {
+    let khachDua = parseFloat(document.getElementById('cashInput').value) || 0;
+    let tienThoi = khachDua - tongThanhToan;
+    document.getElementById('txtChange').innerText = formatMoney(tienThoi > 0 ? tienThoi : 0) + " VND";
+}
+
+document.getElementById('scanForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    let ma = document.getElementById('barcodeInput').value.trim().toUpperCase();
+    let sl = parseInt(document.getElementById('qtyInput').value) || 1;
+
+    let item = khoHang.find(x => x.ma === ma);
+    if (!item) {
+        alert("! Không tìm thấy mã sản phẩm trong kho!");
+        return;
+    }
+
+    let inCart = gioHang.find(x => x.ma === ma);
+    let currentQty = inCart ? inCart.soLuong : 0;
+
+    if (currentQty + sl > item.tonKho) {
+        alert(`! Không đủ tồn kho. Tồn kho còn: ${item.tonKho - currentQty}`);
+        return;
+    }
+
+    if (inCart) {
+        inCart.soLuong += sl;
+    } else {
+        gioHang.push({ ...item, soLuong: sl });
+    }
+
+    document.getElementById('barcodeInput').value = '';
+    document.getElementById('qtyInput').value = '1';
+    renderCart();
+});
+
+function removeItem(index) {
+    gioHang.splice(index, 1);
+    renderCart();
+}
+
+document.getElementById('cashInput').addEventListener('input', () => renderCart());
+
+document.getElementById('btnPay').addEventListener('click', function() {
+    if (gioHang.length === 0) {
+        alert("Giỏ hàng đang trống!");
+        return;
+    }
+
+    let tongTien = gioHang.reduce((a, b) => a + (b.donGia * b.soLuong), 0);
+    let tongVAT = gioHang.reduce((a, b) => a + Math.round((b.donGia * b.soLuong * b.vat)/100), 0);
+    let tongThanhToan = tongTien + tongVAT;
+    let khachDua = parseFloat(document.getElementById('cashInput').value) || 0;
+
+    if (khachDua < tongThanhToan) {
+        alert("! Khách đưa chưa đủ tiền thanh toán!");
+        return;
+    }
+
+    gioHang.forEach(cartItem => {
+        let item = khoHang.find(x => x.ma === cartItem.ma);
+        if (item) item.tonKho -= cartItem.soLuong;
+    });
+
+    let now = new Date().toLocaleString('vi-VN');
+    let receiptHtml = `
+        <center><strong>SIÊU THỊ MINI TIỆN LỢI</strong><br>Số HĐ: HD${String(soHD).padStart(6, '0')}<br>Thời gian: ${now}</center>
+        <hr style="margin: 8px 0; border-top: 1px dashed #ccc;">
+        ${gioHang.map(i => `<div>${i.ten}<br>${i.soLuong} x ${formatMoney(i.donGia)} = ${formatMoney(i.soLuong*i.donGia)}đ</div>`).join('')}
+        <hr style="margin: 8px 0; border-top: 1px dashed #ccc;">
+        <div>Tổng tiền: ${formatMoney(tongThanhToan)} VND</div>
+        <div>Khách đưa: ${formatMoney(khachDua)} VND</div>
+        <div>Tiền thối: ${formatMoney(khachDua - tongThanhToan)} VND</div>
+        <center><br>Cảm ơn & Hẹn gặp lại!</center>
+    `;
+
+    document.getElementById('receiptBox').innerHTML = receiptHtml;
+    document.getElementById('receiptBox').style.display = 'block';
+
+    soHD++;
+    gioHang = [];
+    document.getElementById('cashInput').value = '';
+    renderInventory();
+    renderCart();
+});
+
+renderInventory();
+</script>
+</body>
+</html>
